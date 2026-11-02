@@ -9,6 +9,8 @@
 
 A native Go client for the [BuyPower MFB](https://docs.buypowermfb.net/docs/introduction) payments API, written in idiomatic Go with typed requests and responses, `context.Context` on every call, and Go 1.23 range-over-func iterators for paging. Covers transfers, refunds, virtual accounts, wallets, collections, transactions, revenue and signed webhooks.
 
+> **Also available in TypeScript:** [otyang/buypowermfb2-ts](https://github.com/otyang/buypowermfb2-ts) for Node.js, Bun, Deno and Cloudflare Workers. Both SDKs share the same design, behaviour and test suite.
+
 > [!CAUTION]
 > **This SDK targets version 2 of the BuyPower MFB API only (`/v2/...`).**
 >
@@ -235,6 +237,10 @@ Checked against the sandbox on 2 November 2026:
 - Insufficient balance on a transfer returns 502 `gateway-error`, not the documented 422 `conflict-error`.
 - `ReservedAccounts.Balance` returns `json.RawMessage` because the spec doesn't type it. On the sandbox it currently fails with "This is not a wallet account", which is a server bug.
 
+## Other languages
+
+- **TypeScript / JavaScript:** [otyang/buypowermfb2-ts](https://github.com/otyang/buypowermfb2-ts)
+
 ## Contributing
 
 Issues and pull requests are welcome. Before opening a pull request, run:
@@ -245,7 +251,7 @@ go vet ./...
 go test ./...
 ```
 
-If your change touches request or response shapes, also run the [sandbox tests](#sandbox-tests) with your own sandbox credentials.
+If your change touches request or response shapes, also run the [sandbox tests](#sandbox-tests) with your own sandbox credentials. Changes in behaviour should land in the [TypeScript SDK](https://github.com/otyang/buypowermfb2-ts) too, so the two stay in step.
 
 ## Contributors
 
