@@ -2,6 +2,7 @@ package buypower
 
 import (
 	"context"
+	"errors"
 	"net/http"
 )
 
@@ -51,7 +52,8 @@ type CreateTransferRequest struct {
 	Source      TransferSource      `json:"source"`
 	Destination TransferDestination `json:"destination"`
 	Amount      Money               `json:"amount"`
-	Narration   string              `json:"narration,omitempty"` // max 50 chars
+	// Narration is required by the API, although the docs mark it optional. Max 50 characters.
+	Narration string `json:"narration"`
 	// Reference is your idempotent client reference. Strongly recommended:
 	// reuse it when you retry after reconciling.
 	Reference string   `json:"reference,omitempty"`
@@ -84,10 +86,13 @@ type Transfer struct {
 type TransfersService struct{ c *Client }
 
 // Create initiates a transfer (POST /v2/transfers). The returned status is
-// usually pending; wait for the transfer.* webhook or poll Transactions.Get.
+// usually AUTHORIZED; wait for the transfer.* webhook or poll Transactions.Get.
 //
 // Create is never retried by the SDK: on a timeout or 502 the money may still
 // move, so check Transactions.Get(ctx, req.Reference) before retrying yourself.
 func (s *TransfersService) Create(ctx context.Context, req *CreateTransferRequest, opts ...RequestOption) (*Transfer, error) {
+	if req.Narration == "" {
+		return nil, errors.New("buypower: transfer narration is required")
+	}
 	return call[Transfer](ctx, s.c, request{method: http.MethodPost, path: "/v2/transfers", body: req}, opts)
 }

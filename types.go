@@ -2,7 +2,10 @@ package buypower
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"iter"
+	"math"
 	"net/url"
 )
 
@@ -19,6 +22,29 @@ type Money struct {
 
 // NGN returns a naira Money value: buypower.NGN(5000) is ₦5,000.00.
 func NGN(value float64) Money { return Money{Value: value, Currency: CurrencyNGN} }
+
+// MarshalJSON sends Value rounded to the kobo. Floating-point noise such as
+// 300.29999999999995 (from 100.10*3) is rounded away; a real third decimal
+// place is an error, because BuyPower would otherwise round it silently.
+func (m Money) MarshalJSON() ([]byte, error) {
+	v, err := toKobo(m.Value)
+	if err != nil {
+		return nil, err
+	}
+	type plain Money // no MarshalJSON method, so no recursion
+	return json.Marshal(plain{Value: v, Currency: m.Currency})
+}
+
+// toKobo rounds v to two decimal places, allowing only floating-point noise
+// (a few units in the last place) to be rounded away.
+func toKobo(v float64) (float64, error) {
+	kobo := v * 100
+	k := math.Round(kobo)
+	if math.Abs(kobo-k) > math.Max(1e-6, math.Abs(kobo)*1e-13) {
+		return 0, fmt.Errorf("buypower: amount %v has more than two decimal places; BuyPower works in kobo, so round it first", v)
+	}
+	return k / 100, nil
+}
 
 // AccountParty describes a counterparty bank account.
 type AccountParty struct {

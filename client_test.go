@@ -50,7 +50,7 @@ func TestCreateTransfer(t *testing.T) {
 			t.Fatalf("auth header = %q", got)
 		}
 		body, _ := io.ReadAll(r.Body)
-		want := `{"source":{"type":"collection","balance":"reserved"},"destination":{"bankCode":"058","accountNumber":"0123456789"},"amount":{"value":5000,"currency":"NGN"},"reference":"payout-1"}`
+		want := `{"source":{"type":"collection","balance":"reserved"},"destination":{"bankCode":"058","accountNumber":"0123456789"},"amount":{"value":5000,"currency":"NGN"},"narration":"payout","reference":"payout-1"}`
 		if string(body) != want {
 			t.Fatalf("body =\n%s\nwant\n%s", body, want)
 		}
@@ -68,6 +68,7 @@ func TestCreateTransfer(t *testing.T) {
 		Source:      FromCollection(BalanceReserved),
 		Destination: TransferDestination{BankCode: "058", AccountNumber: "0123456789"},
 		Amount:      NGN(5000),
+		Narration:   "payout",
 		Reference:   "payout-1",
 	})
 	if err != nil {
@@ -181,7 +182,7 @@ func TestTransferIsNeverRetried(t *testing.T) {
 		calls.Add(1)
 		writeJSON(w, 502, map[string]any{"status": "gateway-error", "message": "upstream"})
 	})
-	_, err := c.Transfers.Create(context.Background(), &CreateTransferRequest{Amount: NGN(1), Reference: "payout-1"})
+	_, err := c.Transfers.Create(context.Background(), &CreateTransferRequest{Amount: NGN(1), Narration: "payout", Reference: "payout-1"})
 	if err == nil || calls.Load() != 1 {
 		t.Fatalf("err=%v calls=%d", err, calls.Load())
 	}
@@ -256,5 +257,47 @@ func TestBackoffIsCapped(t *testing.T) {
 		if d := c.backoff(attempt, errors.New("x")); d <= 0 || d > 40*time.Second {
 			t.Fatalf("attempt %d: backoff %v", attempt, d)
 		}
+	}
+}
+
+func TestAmountsAreSentInKobo(t *testing.T) {
+	var bodies []string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		writeJSON(w, 200, map[string]any{"status": "success", "message": "ok", "data": map[string]any{"reference": "r", "status": "AUTHORIZED"}})
+	})
+	x := 100.10
+	req := &CreateTransferRequest{Amount: NGN(x * 3), Narration: "payout"} // 300.29999999999995
+	if _, err := c.Transfers.Create(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(bodies[0], `"amount":{"value":300.3,"currency":"NGN"}`) {
+		t.Fatalf("float noise not rounded to the kobo: %s", bodies[0])
+	}
+
+	for _, v := range []float64{100.555, 0.001, 1234.5678} {
+		_, err := c.Refunds.Create(context.Background(), &CreateRefundRequest{TransactionReference: "TX-1", Amount: NGN(v), Reason: "test"})
+		if err == nil || !strings.Contains(err.Error(), "more than two decimal places") {
+			t.Fatalf("%v: want sub-kobo error, got %v", v, err)
+		}
+	}
+	for _, v := range []float64{0.01, 100.55, 1e9 + 0.99} {
+		if _, err := toKobo(v); err != nil {
+			t.Fatalf("%v should be accepted: %v", v, err)
+		}
+	}
+	if len(bodies) != 1 {
+		t.Fatalf("sub-kobo amounts must fail before any request, got %d requests", len(bodies))
+	}
+}
+
+func TestTransferRequiresNarration(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("no request should be sent")
+	})
+	_, err := c.Transfers.Create(context.Background(), &CreateTransferRequest{Amount: NGN(100)})
+	if err == nil || !strings.Contains(err.Error(), "narration is required") {
+		t.Fatalf("want narration error, got %v", err)
 	}
 }

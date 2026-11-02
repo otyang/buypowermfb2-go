@@ -47,6 +47,7 @@ tr, err := client.Transfers.Create(ctx, &buypower.CreateTransferRequest{
     Source:      buypower.FromCollection(buypower.BalanceReserved), // or buypower.FromWallet("9006990538")
     Destination: buypower.TransferDestination{BankCode: "058", AccountNumber: "0123456789"},
     Amount:      buypower.NGN(5000), // naira, not kobo
+    Narration:   "Invoice #4821",   // required by the API
     Reference:   "payout-4821",      // your idempotent reference
 })
 
@@ -73,6 +74,20 @@ Runnable programs are in [examples/quickstart](examples/quickstart) and [example
 `GET /v2/collections/wallets` is left out because it is a deprecated alias of `GET /v2/wallets`.
 
 Revenue dates are read in Lagos time (Africa/Lagos), whatever time zone you pass.
+
+## Amounts
+
+Amounts are in naira (the major unit) and precise to the kobo, two decimal places. `buypower.NGN(1234.56)` is sent as exactly `1234.56`.
+
+The SDK rounds every request amount to the kobo before sending it:
+
+| You pass | Sent | Why |
+|---|---|---|
+| `NGN(1234.56)` | `1234.56` | already exact |
+| `NGN(100.10 * 3)` (= `300.29999999999995`) | `300.3` | floating-point noise is rounded away |
+| `NGN(100.555)` | nothing: an error, no request | a real third decimal place |
+
+BuyPower itself rounds a third decimal place silently: in the sandbox, ₦100.555 became a ₦100.56 transfer, while the response still showed `value: 100.555`. So the SDK rejects such amounts before any money moves. Round sub-kobo amounts (percentages, splits) yourself, the way your business rules require, before passing them in.
 
 ## Errors
 
@@ -233,7 +248,10 @@ Checked against the sandbox on 2 November 2026:
 - List endpoints return arrays, even where `openapi.json` declares a single object. The SDK accepts either.
 - Collection accounts and balances use `accountType` and a nested `balance.balance`, not the spec's `type` and `available`. The SDK follows the server.
 - Transfer `status` uses the transaction statuses (`AUTHORIZED`, `CONFIRMED`, …), not the docs' `pending`/`paid`/`failed`. See [Transfer statuses](#transfer-statuses).
-- Validation errors list the bad fields inside `message`. The `errors` array is not sent.
+- Field-level validation details are inconsistent: some errors list the bad fields only inside `message`, others also send the `errors` array.
+- `narration` on a transfer is required ("BankTransaction.narration cannot be null"), although the docs mark it optional. The SDK checks it before sending.
+- Amounts below the documented minimum of ₦1 are accepted: a ₦0.50 transfer went through.
+- A third decimal place is rounded silently (₦100.555 became ₦100.56). See [Amounts](#amounts).
 - Insufficient balance on a transfer returns 502 `gateway-error`, not the documented 422 `conflict-error`.
 - `ReservedAccounts.Balance` returns `json.RawMessage` because the spec doesn't type it. On the sandbox it currently fails with "This is not a wallet account", which is a server bug.
 
