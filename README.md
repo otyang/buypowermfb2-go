@@ -93,6 +93,33 @@ Network errors, 429 and 5xx responses are retried with exponential backoff and j
 
 Transfers and refunds are asynchronous. Confirm the final state with `Transactions.Get` or a webhook.
 
+## Transfer statuses
+
+> [!IMPORTANT]
+> A transfer's `Status` uses the upper-case **transaction** statuses, not the lower-case `pending` / `paid` / `failed` from BuyPower's [Transfers guide](https://docs.buypowermfb.net/docs/guides/transfers). Code that checks for `"paid"` never matches, and a finished payout is never marked as paid.
+
+In the sandbox, a new transfer comes back as `AUTHORIZED` and later shows `CONFIRMED` in `Transactions.Get`. Those values come from the [transaction status list](https://docs.buypowermfb.net/docs/guides/transactions): `PENDING`, `AUTHORIZED`, `SUBMITTED`, `CONFIRMED`, `UNRESOLVED`, `REJECTED`, `REFUND_INITIATED`, `REFUNDED`, `REFUNDED_PARTIALLY`.
+
+Compare against the `Tx*` constants:
+
+```go
+switch tr.Status {
+case buypower.TxConfirmed: // money delivered (final)
+case buypower.TxUnresolved, buypower.TxRejected: // failed (final)
+default: // PENDING, AUTHORIZED, SUBMITTED: still in flight, wait for the webhook
+}
+```
+
+| Transfers guide | Status you actually get | Webhook event |
+|---|---|---|
+| `pending` | `PENDING`, `AUTHORIZED`, `SUBMITTED` | `transfer.pending` |
+| `paid` | `CONFIRMED` | `transfer.paid` |
+| `failed` | `UNRESOLVED`, `REJECTED` | `transfer.failed` |
+
+Webhook event names keep the guide's words: a transfer that ends `CONFIRMED` arrives as a `transfer.paid` event.
+
+`AUTHORIZED` and `CONFIRMED` were seen in the sandbox. Mapping `UNRESOLVED` and `REJECTED` to a failure follows BuyPower's docs, which call `CONFIRMED` and `UNRESOLVED` final; a failed transfer has not yet been observed.
+
 ## Webhooks
 
 ```go
@@ -203,7 +230,7 @@ Checked against the sandbox on 2 November 2026:
 
 - List endpoints return arrays, even where `openapi.json` declares a single object. The SDK accepts either.
 - Collection accounts and balances use `accountType` and a nested `balance.balance`, not the spec's `type` and `available`. The SDK follows the server.
-- Transfer `status` uses the transaction statuses (`AUTHORIZED`, `CONFIRMED`, …), not the docs' `pending`/`paid`/`failed`. Compare against the `Tx*` constants.
+- Transfer `status` uses the transaction statuses (`AUTHORIZED`, `CONFIRMED`, …), not the docs' `pending`/`paid`/`failed`. See [Transfer statuses](#transfer-statuses).
 - Validation errors list the bad fields inside `message`. The `errors` array is not sent.
 - Insufficient balance on a transfer returns 502 `gateway-error`, not the documented 422 `conflict-error`.
 - `ReservedAccounts.Balance` returns `json.RawMessage` because the spec doesn't type it. On the sandbox it currently fails with "This is not a wallet account", which is a server bug.
