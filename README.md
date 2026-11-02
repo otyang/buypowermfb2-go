@@ -1,9 +1,13 @@
-# buypowermfb2
+# buypowermfb2-go
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/otyang/buypowermfb2.svg)](https://pkg.go.dev/github.com/otyang/buypowermfb2)
-[![CI](https://github.com/otyang/buypowermfb2/actions/workflows/ci.yml/badge.svg)](https://github.com/otyang/buypowermfb2/actions/workflows/ci.yml)
+**The BuyPower MFB v2 API SDK for Go (Golang).**
 
-Go SDK for the [BuyPower MFB](https://docs.buypowermfb.net/docs/introduction) payments API. Covers transfers, refunds, virtual accounts, wallets, collections, transactions, revenue and signed webhooks.
+[![Go Reference](https://pkg.go.dev/badge/github.com/otyang/buypowermfb2-go.svg)](https://pkg.go.dev/github.com/otyang/buypowermfb2-go)
+[![CI](https://github.com/otyang/buypowermfb2-go/actions/workflows/ci.yml/badge.svg)](https://github.com/otyang/buypowermfb2-go/actions/workflows/ci.yml)
+[![Go version](https://img.shields.io/github/go-mod/go-version/otyang/buypowermfb2-go)](go.mod)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+A native Go client for the [BuyPower MFB](https://docs.buypowermfb.net/docs/introduction) payments API, written in idiomatic Go with typed requests and responses, `context.Context` on every call, and Go 1.23 range-over-func iterators for paging. Covers transfers, refunds, virtual accounts, wallets, collections, transactions, revenue and signed webhooks.
 
 > [!CAUTION]
 > **This SDK targets version 2 of the BuyPower MFB API only (`/v2/...`).**
@@ -13,18 +17,19 @@ Go SDK for the [BuyPower MFB](https://docs.buypowermfb.net/docs/introduction) pa
 > [!NOTE]
 > This is a community SDK. It is not published or supported by BuyPower MFB. For account or API problems, contact BuyPower at developers@buypowermfb.net.
 
-- Standard library only, no dependencies
+- Pure Go, standard library only, no third-party dependencies
 - Go 1.24 or newer
+- Safe for concurrent use by many goroutines
 - Tested against the live sandbox (see [Testing](#testing))
 
 ## Install
 
 ```sh
-go get github.com/otyang/buypowermfb2
+go get github.com/otyang/buypowermfb2-go
 ```
 
 ```go
-import buypower "github.com/otyang/buypowermfb2"
+import buypower "github.com/otyang/buypowermfb2-go"
 ```
 
 ## Quick start
@@ -203,6 +208,22 @@ Checked against the sandbox on 2 November 2026:
 - Insufficient balance on a transfer returns 502 `gateway-error`, not the documented 422 `conflict-error`.
 - `ReservedAccounts.Balance` returns `json.RawMessage` because the spec doesn't type it. On the sandbox it currently fails with "This is not a wallet account", which is a server bug.
 
+## Contributing
+
+Issues and pull requests are welcome. Before opening a pull request, run:
+
+```sh
+gofmt -l .        # must print nothing
+go vet ./...
+go test ./...
+```
+
+If your change touches request or response shapes, also run the [sandbox tests](#sandbox-tests) with your own sandbox credentials.
+
+## Contributors
+
+- [@otyang](https://github.com/otyang): creator and maintainer
+
 ## License
 
-[MIT](LICENSE)
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Otyang.

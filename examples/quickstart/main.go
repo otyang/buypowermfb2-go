@@ -10,7 +10,7 @@ import (
 	"log"
 	"time"
 
-	buypower "github.com/otyang/buypowermfb2"
+	buypower "github.com/otyang/buypowermfb2-go"
 )
 
 func main() {
