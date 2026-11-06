@@ -196,7 +196,8 @@ Every run uses fresh references, so runs by different people never clash.
 Known sandbox problems show as `SKIP` with the reason instead of failing:
 - wallets not enabled for the business;
 - the reserved-account balance endpoint answering "This is not a wallet account";
-- an empty collection balance refusing the test transfer.
+- an empty collection balance refusing the test transfer;
+- no `refund.*` webhook arriving: the sandbox completes refunds (about 3 minutes) but has not been seen to send their webhook.
 
 These tests start passing by themselves once the sandbox is fixed or the account is set up.
 
@@ -219,7 +220,7 @@ This test makes the sandbox send real signed webhooks to your machine and checks
 What it does:
 - It listens on `BP_WEBHOOK_PORT` (default `9990`). Nothing else may use that port while it runs.
 - It **points your sandbox webhook subscriptions** (collections, transfers, refunds) at `BP_WEBHOOK_URL` and leaves them there.
-- It sends a test payment and a ₦100 transfer, then waits up to 90 seconds for each signed event.
+- It sends a test payment, a ₦100 transfer and a ₦100 refund, then waits for each signed event: up to 90 seconds for the payment and transfer, 5 minutes for the refund.
 
 A wrong secret fails with a clear message.
 

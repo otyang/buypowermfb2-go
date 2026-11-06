@@ -204,7 +204,7 @@ func TestSandboxWrites(t *testing.T) {
 }
 
 // TestSandboxWebhooks points the business's sandbox webhook subscriptions at
-// BP_WEBHOOK_URL, triggers a payment and a transfer, and waits for both signed
+// BP_WEBHOOK_URL, triggers a payment, a transfer and a refund, and waits for their signed
 // events to reach a local receiver. It leaves the subscriptions pointing there.
 func TestSandboxWebhooks(t *testing.T) {
 	c := sandboxClient(t)
@@ -217,7 +217,7 @@ func TestSandboxWebhooks(t *testing.T) {
 	if port == "" {
 		port = "9990"
 	}
-	ctx := sandboxCtx(t, 4*time.Minute)
+	ctx := sandboxCtx(t, 9*time.Minute)
 
 	// The tunnel forwards to one fixed port, so fail rather than pick another.
 	ln, err := net.Listen("tcp", "127.0.0.1:"+port)
@@ -253,10 +253,13 @@ func TestSandboxWebhooks(t *testing.T) {
 	t.Run("CollectionEvent", func(t *testing.T) {
 		txRef := uniqueRef("whpay")
 		simulatePayment(t, ctx, c, acct, txRef, 2500)
-		e := waitForEvent(t, events, rejected, func(e *WebhookEvent) bool {
+		e := waitForEvent(t, events, rejected, 90*time.Second, func(e *WebhookEvent) bool {
 			tx, err := e.Transaction()
 			return err == nil && tx.TransactionReference == txRef
 		})
+		if e == nil {
+			t.Fatal(noWebhook)
+		}
 		tx, _ := e.Transaction()
 		if e.Type != EventStaticAccountTransactionCreated || e.ID == "" || tx.Amount <= 0 || tx.Type != Inflow {
 			t.Fatalf("event=%+v tx=%+v", e, tx)
@@ -265,12 +268,37 @@ func TestSandboxWebhooks(t *testing.T) {
 	t.Run("TransferEvent", func(t *testing.T) {
 		ref := uniqueRef("whtr")
 		sandboxTransfer(t, ctx, c, ref)
-		e := waitForEvent(t, events, rejected, func(e *WebhookEvent) bool {
+		e := waitForEvent(t, events, rejected, 90*time.Second, func(e *WebhookEvent) bool {
 			tx, err := e.Transaction()
 			return err == nil && tx.TransactionReference == ref
 		})
+		if e == nil {
+			t.Fatal(noWebhook)
+		}
 		if !strings.HasPrefix(e.Type, "transfer.") {
 			t.Fatalf("event type %q", e.Type)
+		}
+	})
+	t.Run("RefundEvent", func(t *testing.T) {
+		txRef := uniqueRef("whrf")
+		simulatePayment(t, ctx, c, acct, txRef, 2500)
+		waitForTransaction(t, ctx, c, txRef)
+		if _, err := c.Refunds.Create(ctx, &CreateRefundRequest{TransactionReference: txRef, Amount: NGN(100), Reason: "sdk sandbox test"}); err != nil {
+			t.Fatal(err)
+		}
+		// Sandbox refunds take about 3 minutes to complete.
+		e := waitForEvent(t, events, rejected, 5*time.Minute, func(e *WebhookEvent) bool {
+			rf, err := e.Refund()
+			return strings.HasPrefix(e.Type, "refund.") && err == nil && rf.TransactionReference == txRef
+		})
+		if e == nil {
+			// Seen 6 Nov 2026: the refund reaches CONFIRMED but no refund.* event is sent,
+			// although the refunds topic is subscribed and collection events arrive.
+			t.Skip("known sandbox issue: no refund webhook is sent, even after the refund completes")
+		}
+		rf, _ := e.Refund()
+		if e.ID == "" || rf.Reference == "" || rf.Amount != 100 {
+			t.Fatalf("event=%+v refund=%+v", e, rf)
 		}
 	})
 }
@@ -285,12 +313,16 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
-func waitForEvent(t *testing.T, events <-chan *WebhookEvent, rejected <-chan int, match func(*WebhookEvent) bool) *WebhookEvent {
+const noWebhook = "no matching webhook in time: check BP_WEBHOOK_URL forwards to BP_WEBHOOK_PORT"
+
+// waitForEvent returns the first event that matches, or nil after wait.
+func waitForEvent(t *testing.T, events <-chan *WebhookEvent, rejected <-chan int, wait time.Duration, match func(*WebhookEvent) bool) *WebhookEvent {
 	t.Helper()
-	timeout := time.After(90 * time.Second)
+	timeout := time.After(wait)
 	for {
 		select {
 		case e := <-events:
+			t.Logf("received %s %s", e.Type, e.ID)
 			if match(e) {
 				return e
 			}
@@ -300,7 +332,7 @@ func waitForEvent(t *testing.T, events <-chan *WebhookEvent, rejected <-chan int
 			}
 			t.Fatalf("a delivery was rejected with HTTP %d", code)
 		case <-timeout:
-			t.Fatal("no matching webhook within 90s: check BP_WEBHOOK_URL forwards to BP_WEBHOOK_PORT")
+			return nil
 		}
 	}
 }
